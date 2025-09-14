@@ -1,0 +1,66 @@
+---
+title: "Week 3B: Window Functions — Moving Averages"
+author: "Kevin Martin"
+output: html_document
+---
+
+## Setup
+```{r setup, message=FALSE, warning=FALSE}
+# If something is missing, install in the Console (not here):
+# install.packages(c("tidyquant","dplyr","slider","lubridate","ggplot2","knitr"))
+
+library(tidyquant)  # for convenient price data
+library(dplyr)
+library(slider)
+library(lubridate)
+library(ggplot2)
+library(knitr)
+
+
+# Pick any two tickers you like
+symbols <- c("AAPL","MSFT")
+
+prices <- tq_get(symbols, from = "2022-01-01") %>%
+  dplyr::select(symbol, date, close) %>%
+  dplyr::arrange(symbol, date)
+
+glimpse(prices)
+head(prices, 10)
+```
+
+## Window functions: YTD average & 6-day moving average
+```{r}
+# YTD average: within each (symbol, year), cumulative mean of close up to each date
+ytd_ma <- prices %>%
+  dplyr::mutate(year = lubridate::year(date)) %>%
+  dplyr::group_by(symbol, year) %>%
+  dplyr::arrange(date, .by_group = TRUE) %>%
+  dplyr::mutate(ytd_avg = cummean(close)) %>%
+  dplyr::ungroup()
+
+# 6-day moving average: rolling mean of the last 6 trading days per symbol
+with_roll <- ytd_ma %>%
+  dplyr::group_by(symbol) %>%
+  dplyr::arrange(date, .by_group = TRUE) %>%
+  dplyr::mutate(ma6 = slider::slide_dbl(close, mean, .before = 5, .complete = TRUE)) %>%
+  dplyr::ungroup()
+
+# Preview
+knitr::kable(head(with_roll, 12), caption = "Sample with YTD average and 6-day MA")
+
+ggplot(with_roll, aes(date)) +
+  geom_line(aes(y = close), alpha = 0.5) +
+  geom_line(aes(y = ma6)) +
+  facet_wrap(~ symbol, scales = "free_y") +
+  labs(title = "Close vs 6-day Moving Average",
+       y = "Price", x = "Date") +
+  theme_minimal()
+```
+
+
+
+## Results (brief)
+- The **YTD average** (cummean within each year) shows how each stock’s average price evolves as the year progresses—early values move quickly, then stabilize as more days are added.
+- The **6-day moving average** smooths day-to-day noise and reveals short-term trends; when the MA rises above (or falls below) the close, it often signals short momentum shifts.
+- Comparing panels, you can see that symbols with **higher volatility** have a larger gap between the daily close and the 6-day MA, while steadier symbols track the MA more closely.
+
